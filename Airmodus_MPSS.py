@@ -196,7 +196,7 @@ class dmps_device_serial_connection():
     def __init__(self):
         # Define the class to have attributes of serial_port, time_out,port_in_use
         self.serial_port = "NaN"
-        self.timeout = 1
+        self.timeout = 0.1
         # Stores the comport name in use currently
         self.port_in_use = "NaN"
         self.port_list = self.list_com_ports()
@@ -301,8 +301,16 @@ class dmps_device_serial_connection():
         self.connection.reset_output_buffer()
         self.connection.write(message)
     
+    def send_clean_message(self,message):                                  
+        message = str(message)+'\r\n'
+        message = bytes(message, 'utf-8')
+        self.connection.write(message)
+    
     def read_line(self):                                  
         return  self.connection.read_until(b'\r')
+    
+    def read_line_DMA(self):                                  
+        return  self.connection.read_until(expected=b'\r\n', size=128)
 
     def read_all(self):                                  
         return  self.connection.read_all()
@@ -340,7 +348,7 @@ class dmps_device_serial_connection():
 
     def from_dict(self, data):
         self.serial_port = data.get('serial_port', "NaN")
-        self.timeout = data.get('timeout', 1)
+        self.timeout = data.get('timeout', 0.1)
         self.port_in_use = data.get('port_in_use', "NaN")
         self.port_list = data.get('port_list', [])
    
@@ -909,40 +917,41 @@ class MainWindow(QMainWindow):
     # Send command to set DMA voltage
     def set_voltage(self):
 
-        voltage = self.set_voltage_value
+        connectionStatus = self.params.child('Before starting').child('Device settings').child('Ref CPC connection').child('Connected').value()
+        # IF CPC connected
+        if connectionStatus == True:
 
-        # Ensure that message goes throug, if calibration yields negative values
-        if voltage < 0:
-            voltage = 0
+            voltage = self.set_voltage_value
 
-        # Limit the voltage to prevent arcing
-        if voltage > self.gas_voltage_limit:
-            voltage = self.gas_voltage_limit
+            # Ensure that message goes throug, if calbration yields negative values
+            if voltage < 0:
+                voltage = 0
 
-        # Rename for correct printout
-        voltage_aimed = voltage
+            # Limit the voltage to 9kV to prevent arcing
+            if voltage > self.gas_voltage_limit:
+                voltage = self.gas_voltage_limit
 
-        # Calibration for the HV source
-        voltage_offset = self.params.child('Measurement status').child('DMA properties').child('Voltage offset').value() # m
-        voltage_slope = self.params.child('Measurement status').child('DMA properties').child('Voltage slope').value() # m
-        voltage = (voltage-voltage_offset)/voltage_slope
+            # Rename for correct printout
+            voltage_aimed = voltage
 
-        # convert to V from kV for control voltage
-        voltage = voltage/1000
+            # Calibration for the spellman HV source
+            voltage_offset = self.params.child('Measurement status').child('DMA properties').child('Voltage offset').value() # m
+            voltage_slope = self.params.child('Measurement status').child('DMA properties').child('Voltage slope').value() # m
+            voltage = (voltage-voltage_offset)/voltage_slope
 
-        # Find the port of the reference CPC and send the message
-        for dev in self.params.child('Before starting').child('Device settings').children():
-            if dev.child('Device type').value() == 5: # 5 == ref cpc
-                connection = dev.children()[3].value()
-                message = ":SET:AOUT " + str(voltage)
-                temp = connection.send_and_read(message).decode()#.split(" ")[1][:-1]        
-                self.params.child('Measurement status').child('Current values').child('DMA set V').setValue(voltage_aimed)
-                current_dp = self.calculate_DMA_Dp(voltage_aimed)*1e9
-                self.params.child('Measurement status').child('Current values').child('Current Dp').setValue(current_dp)
+            # convert to V from kV
+            voltage = voltage/1000
 
-        # Zero the flag and value to zero after each set
-        self.set_voltage_flag = 0
-        self.set_voltage_value = 0
+
+            #dev = self.params.child('Before starting').child('Device settings').child('Ref CPC connection').children()[3].value()
+            message = ":SET:VPOINT " + str(voltage)
+            self.refConnection.send_clean_message(message)
+
+
+
+            self.params.child('Measurement status').child('Current values').child('DMA set V').setValue(voltage_aimed)
+            current_dp = self.calculate_DMA_Dp(voltage_aimed)*1e9
+            self.params.child('Measurement status').child('Current values').child('Current Dp').setValue(current_dp)
 
     def setDMAtoZero(self):
         self.set_voltage_flag = 1
@@ -1297,44 +1306,66 @@ class MainWindow(QMainWindow):
             if dev.child('Connected').value():
                 if dev.child('Device type').value() == 1: # DMA
                     try:
-                        temp = dev.children()[3].value().read_all().decode()
-                        temp = list(map(float,temp.split(",")[:-1]))
-                                                
-                        flow_offset = self.params.child('Measurement status').child('DMA properties').child('Sheath offset').value() # m
-                        flow_slope = self.params.child('Measurement status').child('DMA properties').child('Sheath slope').value() # m
-                        temp[3] = (temp[3]-flow_offset)/flow_slope
+                        ser = dev.children()[3].value()
+                        if not hasattr(ser, '_dma_buffer'):
+                            ser._dma_buffer = b''
 
-                        # Convert pressure to kPa
-                        temp[2] = temp[2]/1000.0
+                        ser._dma_buffer += ser.connection.read(ser.connection.in_waiting or 1)
 
-                        # Store the current voltage instead of monitor voltage
-                        temp[7] = self.params.child('Measurement status').child('Current values').child('DMA set V').value()
+                        while b'\r' in ser._dma_buffer:
+                            line, _, ser._dma_buffer = ser._dma_buffer.partition(b'\r')
+                            line = line.decode(errors='ignore').strip()
+                            if not line:
+                                continue
+                            try:
+                                temp = list(map(float, line.split(',')[:-1]))
+                                flow_offset = self.params.child('Measurement status').child('DMA properties').child('Sheath offset').value()
+                                flow_slope = self.params.child('Measurement status').child('DMA properties').child('Sheath slope').value()
+                                temp[3] = (temp[3] - flow_offset) / flow_slope
+                                temp[2] = temp[2] / 1000.0
+                                self.latest_data[dev.child('DevID').value()] = temp
+                                break  # stop after successful parse
+                            except Exception as e:
+                                print(f"Failed to parse DMA line: {e} | Line: {line}")
 
-                        # Store to latest value of the device id
-                        self.latest_data[dev.child('DevID').value()] = temp
-                    except:
-                        print("Failed to read DMA data")
+                    except Exception as e:
+                        print(f"Failed to read DMA data: {e}")
 
-                if dev.child('Device type').value() == 5: # Ref CPC
+                elif dev.child('Device type').value() == 5:  # Ref CPC
                     try:
-                        temp = dev.children()[3].value().read_all().decode()
-                        temp = temp.split(" ")[1][:-1]                        
-                        temp = temp.split(",")
-                        status = temp[-1]
-                        temp = list(map(float,temp[:-1]))
-                        # Stores the CPC status as 0 if everything ok (status given in HEX), else as 1 if any error
-                        if status == '0x0000':
-                            self.params.child('Measurement status').child('Current values').child('Ref CPC status').setValue('OK')
-                        else:
-                            self.params.child('Measurement status').child('Current values').child('Ref CPC status').setValue('Not OK')
-                        temp.append(status)
+                        ser = dev.children()[3].value()
+                        if not hasattr(ser, '_cpc_buffer'):
+                            ser._cpc_buffer = b''
 
-                        # Test the length of the answer to see that the data containst correct number of datapoints
-                        if len(temp) == 16:
+                        ser._cpc_buffer += ser.connection.read(ser.connection.in_waiting or 1)
+
+                        while b'\r' in ser._cpc_buffer:
+                            line, _, ser._cpc_buffer = ser._cpc_buffer.partition(b'\r')
+                            line = line.decode(errors='ignore').strip()
+                            if not line.startswith(":MEAS:ALL"):
+                                print(f"Unexpected start: {repr(line)}")
+                                continue
+
+                            raw_data = line[len(":MEAS:ALL"):].strip().strip(',').split(',')
+
+                            if len(raw_data) != 16:
+                                print(f"Serial read failed: Expected 16 values, got {len(raw_data)}")
+                                continue
+
+                            temp = list(map(float, raw_data[:-1])) + [raw_data[-1]]
+                            status = raw_data[-1]
+
+                            if status == '0x0000':
+                                self.params.child('Measurement status').child('Current values').child('Ref CPC status').setValue('OK')
+                            else:
+                                self.params.child('Measurement status').child('Current values').child('Ref CPC status').setValue('Not OK')
+
                             self.latest_data[dev.child('DevID').value()] = temp
-                    except:
-                        raise ValueError('CPC reading failed - wrong number of values gotten from :MEAS:ALL')
-                        
+                            break
+
+                    except Exception as e:
+                        print(f"Serial read failed: {e}")
+                                                
                 if dev.child('Device type').value() == 2: # Other CPC
                     try:
                         temp = dev.children()[3].value().read_all().decode().split(" ")[1][:-1]                        
@@ -1432,6 +1463,10 @@ class MainWindow(QMainWindow):
             self.set_calibration_flag = 0
 
     def main_loop(self):
+
+        # Send commands to retrievi device data
+        self.get_dev_data()
+        QTimer.singleShot(75, self.readIndata)
         
         # Capture timestamps for the start of the measurement
         if self.dp_ind == 0 and self.waited_time == 0:
@@ -1444,15 +1479,6 @@ class MainWindow(QMainWindow):
         if self.set_calibration_flag == 1:
             self.set_calibration()
 
-        # Send commands to retrievi device data
-        self.get_dev_data()
-
-        # Trigger the reading portion after waiting 350 ms
-        QTimer.singleShot(350, self.readIndata)
-
-        # Up to this point, this function has received and read the latest values, then
-        if self.set_voltage_flag == 1:
-            QTimer.singleShot(550, self.set_voltage)
             
         # Roll the data, append the latest values and update the stored self.plot_data
         self.update1()
@@ -1483,7 +1509,7 @@ class MainWindow(QMainWindow):
                 elif dev.child('Device type').value() == 2: # CPC
                     dev.children()[3].value().send_message(self.message6)
                 elif dev.child('Device type').value() == 5: # Ref CPC
-                    dev.children()[3].value().send_message(self.message6)
+                    self.set_voltage()
                 elif dev.child('Device type').value() == 3: # Template for other devices
                     pass
                 else:
@@ -1699,6 +1725,8 @@ class MainWindow(QMainWindow):
                     dev.children()[3].value().send_message(self.message7)
             time.sleep(1)
             # read the data from the connection
+            self.refConnection = self.params.child('Before starting').child('Device settings').child('Ref CPC connection').children()[3].value()
+            
             try:
                 temp = dev.children()[3].value().read_all().decode()
                 temp = temp.split(" ")[1][:-1]
@@ -1945,7 +1973,7 @@ class MainWindow(QMainWindow):
         self.main_splitter.show()
 
     def startTimer(self):
-        self.timer.start(1000)
+        self.timer.start(100)
 
     def com_port_changed(self):
         for dev in self.params.child('Before starting').child('Device settings').children():
@@ -1980,7 +2008,7 @@ class MainWindow(QMainWindow):
         # complex rutine: list ports->ask id from all->wait->read all    
         for iterator,p in enumerate(ports):
             try:
-                ser_list[iterator] = serial.Serial(p[0], 115200, timeout=0.5)
+                ser_list[iterator] = serial.Serial(p[0], 115200, timeout=0.1)
                 time.sleep(1)
                 ser_list[iterator].write(b'*IDN?\r')
             except:
