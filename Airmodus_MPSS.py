@@ -34,7 +34,7 @@ import json
 # Softare version
 major_ver = 0
 minor_ver = 1
-patch_ver = 1
+patch_ver = 2
 
 # mkPen for curve
 global AMPen
@@ -386,7 +386,7 @@ params = [
                 {'name': 'COM port (ID 0)', 'type': 'list', 'values': {}, 'value': ''},
                 {'name': 'Baud rate (ID 0)', 'type': 'int', 'value':115200, 'visible': False},
                 dict(name = "Connection (ID 0)",value = dmps_device_serial_connection(), visible=False),
-                {'name': 'Device type', 'type': 'list', 'values': {"DMA": 1, "Airmodus CPC": 2, "Airmodus CPC (traditional)": 3, "Other": 4, "Ref CPC": 5}, 'value': 1,'readonly':True, 'visible':False},
+                {'name': 'Device type', 'type': 'int','value': 1,'readonly':True, 'visible':False},
                 dict(name = "Connected", type='bool', value=False,readonly = True),
                 dict(name = "DevID", type='int', value=0,readonly = True,visible = False),
             ]},
@@ -395,7 +395,7 @@ params = [
                 {'name': 'COM port (ID 1)', 'type': 'list', 'values': {}, 'value': ''},
                 {'name': 'Baud rate (ID 1)', 'type': 'int', 'value':115200, 'visible': False},
                 dict(name = "Connection (ID 1)",value = dmps_device_serial_connection(), visible=False),
-                {'name': 'Device type', 'type': 'list', 'values': {"DMA": 1, "Airmodus CPC": 2, "Airmodus CPC (traditional)": 3, "Other": 4, "Ref CPC": 5}, 'value': 5,'readonly':True, 'visible':False},
+                {'name': 'Device type', 'type': 'int', 'value': 5,'readonly':True, 'visible':False},
                 dict(name = "Connected", type='bool', value=False,readonly = True),
                 dict(name = "DevID", type='int', value=1,readonly = True,visible = False),
             ]},
@@ -1285,7 +1285,7 @@ class MainWindow(QMainWindow):
                 if self.params.child('Before starting').child('Device settings').children()[n].children()[3].value().connection.is_open == True:
                     con_val = True # is connected
             
-                self.params.child('Before starting').child('Device settings').children()[n].children()[5].setValue(con_val)
+                    self.params.child('Before starting').child('Device settings').children()[n].children()[5].setValue(con_val)
                 
             except:
                 self.params.child('Before starting').child('Device settings').children()[n].children()[5].setValue(con_val)

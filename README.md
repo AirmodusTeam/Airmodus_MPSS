@@ -9,7 +9,8 @@
 - replace the hard coded blower maximum power with something more appropriate (blowerValue). E.g. limit from flow meters range (0 - 20 lpm), as current upper limit can be too small.
 - Add a message box for errors and other user information, if needed
 
-
+# Software 0.1.2 - 2025.07.31
+- Minor bugfixes
 
 # Software 0.1.1 - 2025.06.25
 - Changed monitor voltage from the 1hz data file to setpoint voltage, as the monitor voltage is not working
