@@ -34,7 +34,7 @@ import json
 # Softare version
 major_ver = 0
 minor_ver = 1
-patch_ver = 2
+patch_ver = 3
 
 # mkPen for curve
 global AMPen
@@ -107,12 +107,16 @@ class Size_scan_settings(pTypes.GroupParameter):
         self.addChild({'name': 'Scan type', 'type': 'str', 'value': 'Stepping (DMPS)', 'readonly': True})
         self.addChild({'name': 'Time between scans (s)', 'type': 'float', 'value': 120, 'suffix': 's', 'tip':'Modifies the measuring time on each size bin', 'readonly': True})
         self.addChild({'name': 'N size bins (#)', 'type': 'int', 'value': 12,'tip':'Modifies the measuring time on each size bin'})
-        self.addChild({'name': 'Wait time (s)', 'type': 'float', 'value': 7, 'limits': (0, 300), 'suffix': 's', 'tip':'Default: 5 s. Time to stabilize between size change. Modifies the scan length.'})
+        self.addChild({'name': 'Wait time between sizes(s)', 'type': 'float', 'value': 7, 'limits': (0, 300), 'suffix': 's', 'tip':'Default: 5 s. Time to stabilize between size change. Modifies the scan length.'})
+        self.addChild({'name': 'Wait time at scan end(s)', 'type': 'float', 'value': 5, 'limits': (0, 300), 'suffix': 's', 'tip':'Default: 5 s. Time to stabilize between size change. Modifies the scan length.'})
+        self.addChild({'name': 'Wait time at scan start(s)', 'type': 'float', 'value': 5, 'limits': (0, 300), 'suffix': 's', 'tip':'Default: 5 s. Time to stabilize between size change. Modifies the scan length.'})
         self.addChild({'name': 'Measuring time (s)', 'type': 'float', 'value': 3, 'limits': (1, 300), 'suffix': 's','tip':'Default: 5. Time to sample the selected size. Modifies the scan length.'})        
         
         self.scan_length = self.param('Time between scans (s)')
         self.n_bins = self.param('N size bins (#)')
-        self.wait_t = self.param('Wait time (s)')
+        self.wait_t = self.param('Wait time between sizes(s)')
+        self.wait_t_end = self.param('Wait time at scan end(s)')
+        self.wait_t_start = self.param('Wait time at scan start(s)')
         self.meas_t = self.param('Measuring time (s)')
 
         # implement the size scan parameters        
@@ -134,6 +138,8 @@ class Size_scan_settings(pTypes.GroupParameter):
         self.n_bins.sigValueChanged.connect(self.scanChanged)
         self.n_bins.sigValueChanged.connect(self.recalculte_dp_list)
         self.wait_t.sigValueChanged.connect(self.scanChanged)
+        self.wait_t_start.sigValueChanged.connect(self.scanChanged)
+        self.wait_t_end.sigValueChanged.connect(self.scanChanged)
         self.meas_t.sigValueChanged.connect(self.scanChanged)
         self.size_list.sigValueChanged.connect(self.size_listChanged)
         self.child('Log spacing').sigValueChanged.connect(self.recalculte_dp_list)
@@ -143,15 +149,16 @@ class Size_scan_settings(pTypes.GroupParameter):
 
     # Function to calculate new values for the interdependent variables, and to trigger them if changed
     def scan_lengthChanged(self):
-        # Substract the 10 s wait time at the beginning of each round
-        meas_time = int(np.round(((self.scan_length.value()-10) - self.wait_t.value()*self.n_bins.value())/self.n_bins.value()))
+        # Substract the wait time at the start and beginning of each round
+        meas_time = int(np.round(((self.scan_length.value()-self.wait_t_total) - self.wait_t.value()*self.n_bins.value())/self.n_bins.value()))
         # add block signals, and error messages
         self.meas_t.setValue(meas_time)
 
     def scanChanged(self):
+        self.wait_t_total = self.wait_t_start.value() + self.wait_t_end.value()
         meas_time = int(np.round((self.meas_t.value() + self.wait_t.value())*self.n_bins.value()))
-        # includes 10 s wait time at the beginning of each round
-        self.scan_length.setValue(meas_time + 10)
+        # includes wait time at the end and beginning of each round
+        self.scan_length.setValue(meas_time + self.wait_t_total)
         
     def scan_paramChanged(self):
         if self.scan_param.value() == True:
@@ -414,7 +421,8 @@ params = [
         Size_scan_settings(name='Size scan settings'),
 
         {'name': 'DMA controls', 'type': 'group', 'children': [
-            {'name': 'Select gas', 'type': 'list', 'values': {"Air": "Air", "Nitrogen": "Nitrogen", "Argon": "Argon"}, 'value': 'Air'},
+            {'name': 'Select gas', 'type': 'list', 'limits': {"Air": "Air", "Nitrogen": "Nitrogen", "Argon": "Argon"}},
+            
             {'name': 'DMA sheath flow', 'type': 'float', 'value': 10.0, 'suffix': 'lpm'},
             {'name': 'Sheath air on', 'type': 'bool', 'value': False, 'tip': "By default starts with blower off"},
             {'name': 'HV on', 'type': 'bool', 'value': False, 'tip': "By default starts with HV off"},
@@ -474,6 +482,9 @@ class MainWindow(QMainWindow):
         self.counter = 0
         self.size_counter = 0
 
+        # Set the time base
+        self.time_step = 0.1 # time step in seconds
+
         # Init sheath and voltage slopes and offsets
         self.calibration_sheath_slope_air = 1
         self.calibration_sheath_offset_air = 0
@@ -503,7 +514,7 @@ class MainWindow(QMainWindow):
         self.params.child('Before starting').child('Device settings').child('DMA connection').child('Connected').sigValueChanged.connect(self.get_calibration)
         
         # DMA parameters
-        self.syst_stable_time = self.params.child('Measurement status').child('Size scan settings').child('Wait time (s)').value()
+        self.syst_stable_time = self.params.child('Measurement status').child('Size scan settings').child('Wait time between sizes(s)').value()
         self.syst_meas_time = self.params.child('Measurement status').child('Size scan settings').child('Measuring time (s)').value()
         self.min_dp = self.params.child('Measurement status').child('Size scan settings').child('Min size (nm)').value()
         self.max_dp = self.params.child('Measurement status').child('Size scan settings').child('Max size (nm)').value()
@@ -861,7 +872,7 @@ class MainWindow(QMainWindow):
     def startScan(self):
         # Recheck the wait and meas time
         self.dp_list = self.params.child('Measurement status').child('Size scan settings').dp_list
-        self.syst_stable_time = self.params.child('Measurement status').child('Size scan settings').child('Wait time (s)').value()
+        self.syst_stable_time = self.params.child('Measurement status').child('Size scan settings').child('Wait time between sizes(s)').value()
         self.syst_meas_time = self.params.child('Measurement status').child('Size scan settings').child('Measuring time (s)').value()
 
         # Turn first voltage to 0 and init counters to 0
@@ -1020,15 +1031,20 @@ class MainWindow(QMainWindow):
     # perform with start scan        
     def voltage_stepping(self):
         
-        self.store_scan_conditions()        
+        self.store_scan_conditions()   
+
+        # Add wait time to the start of the scan
+        if self.dp_ind == 0 and self.waited_time == 0:
+            self.waited_time = -self.wait_t_start
+
         # If the Dp list changes, a trigger to resest this will be needed
-        # if wait time on going just add 1 to waited time
+        # if wait time on going just add to waited time
         if self.waited_time < self.syst_stable_time:
-            self.waited_time+=1    
+            self.waited_time += self.time_step
         # else start measuring
         else:
             # if measurement time not full, then just let time run
-            self.measured_time+=1            
+            self.measured_time += self.time_step           
             if self.measured_time >= self.syst_meas_time:
             # if measruement time full, then change size
                 self.store_point_conc()
@@ -1040,11 +1056,11 @@ class MainWindow(QMainWindow):
                         self.write_scan_data()
                     self.dp_ind = 0
 
-                    # Add time so that the start of the scan will always have at least 10 seconds of wait time
-                    self.waited_time = self.syst_stable_time-10
+                    # Add wait time to the end of the scan
+                    self.waited_time = self.syst_stable_time-self.wait_t_end
                     if self.waited_time > 0:
                         self.waited_time = 0
-                    self.waited_time = -10
+                    self.waited_time = self.wait_t_total
 
                     # Zero the scan status flag
                     self.scan_status_flag = 0
@@ -1973,7 +1989,7 @@ class MainWindow(QMainWindow):
         self.main_splitter.show()
 
     def startTimer(self):
-        self.timer.start(100)
+        self.timer.start(int(self.time_step*1000))  # Convert seconds to milliseconds
 
     def com_port_changed(self):
         for dev in self.params.child('Before starting').child('Device settings').children():
