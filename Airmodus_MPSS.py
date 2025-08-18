@@ -155,7 +155,7 @@ class Size_scan_settings(pTypes.GroupParameter):
         self.meas_t.setValue(meas_time)
 
     def scanChanged(self):
-        self.wait_t_total = self.wait_t_start.value() + self.wait_t_end.value()
+        self.wait_t_total = self.wait_t_start + self.wait_t_end
         meas_time = int(np.round((self.meas_t.value() + self.wait_t.value())*self.n_bins.value()))
         # includes wait time at the end and beginning of each round
         self.scan_length.setValue(meas_time + self.wait_t_total)
@@ -874,6 +874,11 @@ class MainWindow(QMainWindow):
         self.dp_list = self.params.child('Measurement status').child('Size scan settings').dp_list
         self.syst_stable_time = self.params.child('Measurement status').child('Size scan settings').child('Wait time between sizes(s)').value()
         self.syst_meas_time = self.params.child('Measurement status').child('Size scan settings').child('Measuring time (s)').value()
+        # Get wait_t_end and wait_t_start from parameter tree
+        self.wait_t_end = self.params.child('Measurement status').child('Size scan settings').child('Wait time at scan end(s)').value()    
+        self.wait_t_start = self.params.child('Measurement status').child('Size scan settings').child('Wait time at scan start(s)').value()
+        self.wait_total = self.wait_t_end + self.wait_t_start
+        self.waited_time_up = 0
 
         # Turn first voltage to 0 and init counters to 0
         self.init_size_dist_data()
@@ -961,7 +966,15 @@ class MainWindow(QMainWindow):
 
 
             self.params.child('Measurement status').child('Current values').child('DMA set V').setValue(voltage_aimed)
-            current_dp = self.calculate_DMA_Dp(voltage_aimed)*1e9
+            # If the HV is set on and flow is set, then calculate the current Dp, else set to 0
+            current_dp = np.nan
+            if self.params.child('Measurement status').child('DMA controls').child('Sheath air on').value():
+                # if the HV is set on, then calculate the current Dp
+                if self.params.child('Measurement status').child('DMA controls').child('HV on').value():
+                    # Check if the voltage is set
+                    if voltage_aimed > 0:
+                        current_dp = self.calculate_DMA_Dp(voltage_aimed)*1e9
+
             self.params.child('Measurement status').child('Current values').child('Current Dp').setValue(current_dp)
 
     def setDMAtoZero(self):
@@ -980,7 +993,7 @@ class MainWindow(QMainWindow):
         self.scan_T.append(self.latest_data[0][1])
         self.scan_P.append(self.latest_data[0][2])
 
-        round_time = (len(self.dp_list) * (self.syst_stable_time + self.syst_meas_time) )
+        round_time = (len(self.dp_list) * (self.syst_stable_time + self.syst_meas_time + self.wait_total) )
         if len(self.scan_Q) > round_time:
             del self.scan_Q[0]
             del self.scan_RH[0]      
@@ -1031,11 +1044,11 @@ class MainWindow(QMainWindow):
     # perform with start scan        
     def voltage_stepping(self):
         
-        self.store_scan_conditions()   
+        self.store_scan_conditions()
 
         # Add wait time to the start of the scan
         if self.dp_ind == 0 and self.waited_time == 0:
-            self.waited_time = -self.wait_t_start
+            self.waited_time = - self.wait_t_start
 
         # If the Dp list changes, a trigger to resest this will be needed
         # if wait time on going just add to waited time
@@ -1044,34 +1057,42 @@ class MainWindow(QMainWindow):
         # else start measuring
         else:
             # if measurement time not full, then just let time run
-            self.measured_time += self.time_step           
-            if self.measured_time >= self.syst_meas_time:
-            # if measruement time full, then change size
-                self.store_point_conc()
+            if self.measured_time < self.syst_meas_time:
+                self.measured_time += self.time_step           
+            else:
 
                 # if last size then set dp to first size:
                 if self.dp_ind == len(self.dp_list)-1:
-                    self.store_scan_data()
-                    if self.params.child('Before starting').child('Data settings').child('Save data').value():
-                        self.write_scan_data()
-                    self.dp_ind = 0
 
-                    # Add wait time to the end of the scan
-                    self.waited_time = self.syst_stable_time-self.wait_t_end
-                    if self.waited_time > 0:
+                    if self.waited_time_up == 0:
+                        # if measruement time full, then change size
+                        self.store_point_conc()
+
+                    # Check if we've waited at the end of the scan for the agreed time
+                    if self.waited_time_up < self.wait_t_end:
+                        # Add wait time to the end of the scan
+                        self.waited_time_up += self.time_step
+                    else: # if waited time is up, then save the data
+                        self.store_scan_data()
+                        if self.params.child('Before starting').child('Data settings').child('Save data').value():
+                            self.write_scan_data()
+                        self.dp_ind = 0
+                        self.waited_time_up = 0
                         self.waited_time = 0
-                    self.waited_time = self.wait_t_total
+                        self.measured_time = 0
 
-                    # Zero the scan status flag
-                    self.scan_status_flag = 0
+                        # Zero the scan status flag 
+                        self.scan_status_flag = 0
 
                 # else set to next size, and zero measurement time
                 else: 
+                    # if measruement time full, then change size
+                    self.store_point_conc()
                     self.dp_ind += 1
                     self.waited_time = 0
+                    self.measured_time = 0
 
                 # after one size zero the wait and meas time time
-                self.measured_time = 0
                 self.set_Dp()
 
     def write_scan_data(self):
@@ -1339,6 +1360,8 @@ class MainWindow(QMainWindow):
                                 flow_slope = self.params.child('Measurement status').child('DMA properties').child('Sheath slope').value()
                                 temp[3] = (temp[3] - flow_offset) / flow_slope
                                 temp[2] = temp[2] / 1000.0
+                                # Add the DMA set V rounded to 2 decimal places
+                                temp[7] = round(self.params.child('Measurement status').child('Current values').child('DMA set V').value(),2)
                                 self.latest_data[dev.child('DevID').value()] = temp
                                 break  # stop after successful parse
                             except Exception as e:
@@ -1783,7 +1806,7 @@ class MainWindow(QMainWindow):
             
                 # Write headers if they don't exist
                 if write_headers == 1:
-                    out_file.write('YYYY,MM,DD,hh,mm,ss')
+                    out_file.write('YYYY,MM,DD,hh,mm,ss,ms')
                     for dev in self.params.child('Before starting').child('Device settings').children():
                         # if device is connected
                         if dev.child('Connected').value():
@@ -1801,7 +1824,9 @@ class MainWindow(QMainWindow):
                 # Write the actual data
                 # Add timestamp
                 tim = dt.datetime.now()
-                timeStampStr = str(tim.strftime("%Y,%m,%d,%H,%M,%S"))
+                # Add fractional seconds to timestamp
+                timeStampStr = str(tim.strftime("%Y,%m,%d,%H,%M,%S"))+','+str(tim.microsecond//1000)
+#                timeStampStr = str(tim.strftime("%Y,%m,%d,%H,%M,%S"))
                 out_file.write(timeStampStr+',')
                 
                 # Check that the number of data matches the headers
