@@ -155,7 +155,7 @@ class Size_scan_settings(pTypes.GroupParameter):
         self.meas_t.setValue(meas_time)
 
     def scanChanged(self):
-        self.wait_t_total = self.wait_t_start + self.wait_t_end
+        self.wait_t_total = self.wait_t_start.value() + self.wait_t_end.value()
         meas_time = int(np.round((self.meas_t.value() + self.wait_t.value())*self.n_bins.value()))
         # includes wait time at the end and beginning of each round
         self.scan_length.setValue(meas_time + self.wait_t_total)
