@@ -34,7 +34,7 @@ import json
 # Softare version
 major_ver = 0
 minor_ver = 1
-patch_ver = 3
+patch_ver = 4
 
 # mkPen for curve
 global AMPen
@@ -385,7 +385,7 @@ params = [
     {'name': 'Before starting', 'type': 'group', 'children': [
     {'name': 'Save settings', 'type': 'action'},
     {'name': 'Load settings', 'type': 'action'},
-    {'name': 'Resume on startup', 'type': 'bool', 'value': False, 'tip': "Option to resume the last settings on startup"},
+    {'name': 'Resume on startup', 'type': 'bool', 'value': False, 'tip': "Option to resume the last settings on startup", 'visible': False}, # hidden until fixed
         ScalableGroup(name="Device settings", children=[
             
             {'name': 'DMA connection', 'type': 'group', 'children': [
@@ -408,7 +408,7 @@ params = [
             ]},
              
             ]),
-            {'name': 'Re-scan for devices', 'type': 'action'},
+            {'name': 'Re-scan for devices', 'type': 'action', 'visible': False}, # hidden until fixed
            {'name': 'Data settings', 'type': 'group', 'children': [
             {'name': 'File path', 'type': 'str', 'value': "C:/Data/", 'tip': "Default path for saving data. Change if needed"},
             {'name': 'File name', 'type': 'str', 'value': "", 'tip': "Datafile format: YYYYMMDD_HHMM_filename.csv"},
@@ -467,7 +467,7 @@ p = Parameter.create(name='params', type='group', children=params)
 class MainWindow(QMainWindow):
     def __init__(self,params=p,n_points = 200,parent=None):
         super().__init__() # super init function must be called when subclassing a Qt class
-        self.setWindowTitle("Airmodus MPSS " + str(major_ver)+'.'+str(minor_ver)+'.'+str(patch_ver)+'.') # set window title
+        self.setWindowTitle("Airmodus MPSS " + str(major_ver)+'.'+str(minor_ver)+'.'+str(patch_ver)) # set window title
         self.timer = QTimer() # create timer object
         self.params = params # predefined paramete tree
         self.len_points = n_points # number of points shown on plots (from parameter tree in the future?)
@@ -705,7 +705,7 @@ class MainWindow(QMainWindow):
         if self.params.child('Measurement status').child('DMA controls').child('Select gas').value() == "Air":
             self.gas_viscosity = 1.85e-5 # kg/m/s
             self.gas_mfp = 6.73e-8 # 67.3 nm
-            self.gas_voltage_limit = 9000
+            self.gas_voltage_limit = 10000
             self.gas_parameters_A = 1.165
             self.gas_parameters_B = 0.483
             self.gas_parameters_C = 0.997
@@ -716,7 +716,7 @@ class MainWindow(QMainWindow):
         elif self.params.child('Measurement status').child('DMA controls').child('Select gas').value() == "Nitrogen":
             self.gas_viscosity = 1.78e-5
             self.gas_mfp = 6.55e-8 # 67.3 nm
-            self.gas_voltage_limit = 9000
+            self.gas_voltage_limit = 10000
             # Nitrogen gas parameters - same as air
             self.gas_parameters_A = 1.165
             self.gas_parameters_B = 0.483
@@ -1860,13 +1860,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.main_splitter)
 
         # Create logo label
-        self.logo = QLabel(alignment=Qt.AlignCenter)
+        self.logo = QLabel(alignment=Qt.AlignCenter, objectName="logo")
         
         # Get the directory of the current script
         script_dir = os.path.dirname(os.path.realpath(__file__))
         
         # Define the relative path to your image
-        rel_path = "res/Airmodus_white.png"
+        rel_path = "res/airmodus-envea-logo.png"
         
         # Join the script directory with the relative path to get the absolute path
         abs_file_path = os.path.join(script_dir, rel_path)

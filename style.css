@@ -12,6 +12,10 @@ QLabel#label {
 QLabel#label:active {
     color: #e9e9e9;
 }
+/* QLabel with ID 'logo' */
+QLabel#logo {
+    margin-top: 8px;
+}
 /* QPushButton with ID 'button' */
 QPushButton#button {
     color: #888888;
