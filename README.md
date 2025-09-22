@@ -9,6 +9,10 @@
 - replace the hard coded blower maximum power with something more appropriate (blowerValue). E.g. limit from flow meters range (0 - 20 lpm), as current upper limit can be too small.
 - Add a message box for errors and other user information, if needed
 
+# Software 0.1.5 - 2025.09.22
+- Subsecond measurement time
+- Fixed concentration averaging index amount (10 Hz time)
+
 # Software 0.1.4 - 2025.09.17
 - Set gas voltage limit to 10000 for air and nitrogen
 - Hid 'Resume on startup' option (until fixed)

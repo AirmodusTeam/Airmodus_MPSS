@@ -34,7 +34,7 @@ import json
 # Softare version
 major_ver = 0
 minor_ver = 1
-patch_ver = 4
+patch_ver = 5
 
 # mkPen for curve
 global AMPen
@@ -110,7 +110,7 @@ class Size_scan_settings(pTypes.GroupParameter):
         self.addChild({'name': 'Wait time between sizes(s)', 'type': 'float', 'value': 7, 'limits': (0, 300), 'suffix': 's', 'tip':'Default: 5 s. Time to stabilize between size change. Modifies the scan length.'})
         self.addChild({'name': 'Wait time at scan end(s)', 'type': 'float', 'value': 5, 'limits': (0, 300), 'suffix': 's', 'tip':'Default: 5 s. Time to stabilize between size change. Modifies the scan length.'})
         self.addChild({'name': 'Wait time at scan start(s)', 'type': 'float', 'value': 5, 'limits': (0, 300), 'suffix': 's', 'tip':'Default: 5 s. Time to stabilize between size change. Modifies the scan length.'})
-        self.addChild({'name': 'Measuring time (s)', 'type': 'float', 'value': 3, 'limits': (1, 300), 'suffix': 's','tip':'Default: 5. Time to sample the selected size. Modifies the scan length.'})        
+        self.addChild({'name': 'Measuring time (s)', 'type': 'float', 'value': 3, 'limits': (0.1, 300), 'suffix': 's','tip':'Default: 5. Time to sample the selected size. Modifies the scan length.'})        
         
         self.scan_length = self.param('Time between scans (s)')
         self.n_bins = self.param('N size bins (#)')
@@ -150,13 +150,15 @@ class Size_scan_settings(pTypes.GroupParameter):
     # Function to calculate new values for the interdependent variables, and to trigger them if changed
     def scan_lengthChanged(self):
         # Substract the wait time at the start and beginning of each round
-        meas_time = int(np.round(((self.scan_length.value()-self.wait_t_total) - self.wait_t.value()*self.n_bins.value())/self.n_bins.value()))
+        #meas_time = int(np.round(((self.scan_length.value()-self.wait_t_total) - self.wait_t.value()*self.n_bins.value())/self.n_bins.value()))
+        meas_time = (self.scan_length.value() - self.wait_t_total - self.wait_t.value()*self.n_bins.value())/self.n_bins.value()
         # add block signals, and error messages
         self.meas_t.setValue(meas_time)
 
     def scanChanged(self):
         self.wait_t_total = self.wait_t_start.value() + self.wait_t_end.value()
-        meas_time = int(np.round((self.meas_t.value() + self.wait_t.value())*self.n_bins.value()))
+        #meas_time = int(np.round((self.meas_t.value() + self.wait_t.value())*self.n_bins.value()))
+        meas_time = (self.meas_t.value() + self.wait_t.value())*self.n_bins.value()
         # includes wait time at the end and beginning of each round
         self.scan_length.setValue(meas_time + self.wait_t_total)
         
@@ -1002,7 +1004,8 @@ class MainWindow(QMainWindow):
 
     def store_point_conc(self):
         # Calculate the average of last n seconds (n = self.syst_meas_time)
-        latest_mean_conc = np.nanmean(self.plot_data[1][-int(self.syst_meas_time):])
+        #latest_mean_conc = np.nanmean(self.plot_data[1][-int(self.syst_meas_time):])
+        latest_mean_conc = np.nanmean(self.latest_data[1][-int(self.syst_meas_time/self.time_step):])
         self.plot_data['Size dist conc'][self.dp_ind] = latest_mean_conc
 
     def store_scan_data(self):
@@ -1030,7 +1033,8 @@ class MainWindow(QMainWindow):
         scan_length_in_s = self.params.child('Measurement status').child('Size scan settings').child('Time between scans (s)').value()
         time_indices = np.linspace(0, 20*scan_length_in_s, 21)
         # Convert time indices to datetime objects
-        time_values = [datetime.datetime.now() - datetime.timedelta(seconds=int(i)) for i in np.flip(time_indices)]
+        #time_values = [datetime.datetime.now() - datetime.timedelta(seconds=int(i)) for i in np.flip(time_indices)]
+        time_values = [datetime.datetime.now() - datetime.timedelta(seconds=i) for i in np.flip(time_indices)]
         # Convert datetime objects to "HH:MM" format
         time_labels = [i.strftime("%H:%M") for i in time_values]
         # Create a list of tuples for x-axis ticks
