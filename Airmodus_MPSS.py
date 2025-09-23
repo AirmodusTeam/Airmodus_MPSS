@@ -1005,7 +1005,8 @@ class MainWindow(QMainWindow):
     def store_point_conc(self):
         # Calculate the average of last n seconds (n = self.syst_meas_time)
         #latest_mean_conc = np.nanmean(self.plot_data[1][-int(self.syst_meas_time):])
-        latest_mean_conc = np.nanmean(self.latest_data[1][-int(self.syst_meas_time/self.time_step):])
+        samples = int(self.syst_meas_time/self.time_step) # convert time to number of samples
+        latest_mean_conc = np.nanmean(self.plot_data[1][-samples:])
         self.plot_data['Size dist conc'][self.dp_ind] = latest_mean_conc
 
     def store_scan_data(self):
