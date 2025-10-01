@@ -34,7 +34,7 @@ import json
 # Softare version
 major_ver = 0
 minor_ver = 1
-patch_ver = 5
+patch_ver = 6
 
 # mkPen for curve
 global AMPen
@@ -533,7 +533,7 @@ class MainWindow(QMainWindow):
         # Create timer for the measurements       
         self.timer = QTimer()
         self.timer.setTimerType(0) # 0 = precise, 1 coarse, 2 very coarse
-        self.tim = dt.datetime.now()
+        self.timestamp = dt.datetime.now() # variable for current timestamp
 
         self.dp_ind = 0 
         self.waited_time = 0
@@ -1508,14 +1508,17 @@ class MainWindow(QMainWindow):
 
     def main_loop(self):
 
-        # Send commands to retrievi device data
+        # get current timestamp
+        self.timestamp = dt.datetime.now()
+
+        # Send commands to retrieve device data
         self.get_dev_data()
         QTimer.singleShot(75, self.readIndata)
         
         # Capture timestamps for the start of the measurement
         if self.dp_ind == 0 and self.waited_time == 0:
             # store start time as a fractional day
-            timenow = dt.datetime.now().timetuple()
+            timenow = self.timestamp.timetuple()
             self.day_of_year_start = timenow.tm_yday+(timenow.tm_hour + timenow.tm_min/60 + timenow.tm_sec/3600)/24
             self.start_year = timenow.tm_year
         
@@ -1799,7 +1802,7 @@ class MainWindow(QMainWindow):
         # If saving is on open file
         if self.params.child('Before starting').child('Data settings').child('Save data').value():
 
-            current_time = dt.datetime.now().timetuple()
+            current_time = self.timestamp.timetuple()
                        
             if self.file_start_tim.timetuple().tm_yday != current_time.tm_yday:
                 self.filename_check()
@@ -1828,7 +1831,7 @@ class MainWindow(QMainWindow):
 
                 # Write the actual data
                 # Add timestamp
-                tim = dt.datetime.now()
+                tim = self.timestamp
                 # Add fractional seconds to timestamp
                 timeStampStr = str(tim.strftime("%Y,%m,%d,%H,%M,%S"))+','+str(tim.microsecond//1000)
 #                timeStampStr = str(tim.strftime("%Y,%m,%d,%H,%M,%S"))
