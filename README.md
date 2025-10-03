@@ -9,8 +9,9 @@
 - replace the hard coded blower maximum power with something more appropriate (blowerValue). E.g. limit from flow meters range (0 - 20 lpm), as current upper limit can be too small.
 - Add a message box for errors and other user information, if needed
 
-# Software 0.1.6 - 2025.10.01
+# Software 0.1.6 - 2025.10.03
 - Timestamp at start of loop
+- Calculate voltage list when starting scan
 
 # Software 0.1.5 - 2025.09.22
 - Subsecond measurement time

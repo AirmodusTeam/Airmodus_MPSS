@@ -784,12 +784,10 @@ class MainWindow(QMainWindow):
                     # Set the parameter value as usual
                     param.setValue(values.get(param.name(), param.value()))
 
-    def calculate_DMA_V(self,Dp = None):
+    def calculate_DMA_V(self, Dp):
         # Dp in nm, Q in lpm, T1 in celcius, P in Pa
         # Flow value is taken from flow setpoint
-        if Dp is None:
-            Dp = self.dp_list[self.dp_ind]
-        # Let  use the setpoin to avoid noise of measurments, instead of current values for the DMA flow
+        # Use setpoint to avoid noise of measurments, instead of current values for the DMA flow
         Q = self.params.child('Measurement status').child('DMA controls').child('DMA sheath flow').value() 
         T1 = self.params.child('Measurement status').child('Current values').child('Sheath T').value()
         P = self.params.child('Measurement status').child('Current values').child('Sheath P').value()
@@ -823,6 +821,13 @@ class MainWindow(QMainWindow):
         Cc=1+(Kn)*(A+B*np.exp(-(C)/(Kn)))
         Z=(n*element*Cc)/(3*np.pi*mu*Dp)
         return Q_s*np.log(R2/R1)/(2*np.pi*L*Z)
+    
+    def calculate_DMA_V_list(self, dp_list):
+        voltage_list = []
+        for dp in dp_list:
+            voltage = self.calculate_DMA_V(dp)
+            voltage_list.append(voltage)
+        return voltage_list
     
     def calculate_DMA_Dp(self,voltage):
         # Dp in nm
@@ -881,6 +886,11 @@ class MainWindow(QMainWindow):
         self.wait_t_start = self.params.child('Measurement status').child('Size scan settings').child('Wait time at scan start(s)').value()
         self.wait_total = self.wait_t_end + self.wait_t_start
         self.waited_time_up = 0
+
+        print("Dp list:", self.dp_list)
+        # calculate all DMA voltages for the scan and store in a list
+        self.voltage_list = self.calculate_DMA_V_list(self.dp_list)
+        print("Voltage list:", self.voltage_list)
 
         # Turn first voltage to 0 and init counters to 0
         self.init_size_dist_data()
@@ -985,7 +995,7 @@ class MainWindow(QMainWindow):
 
     # Send command to set DMA voltage to corresponding Dp value
     def set_Dp(self):
-        voltage = self.calculate_DMA_V()
+        voltage = self.voltage_list[self.dp_ind]
         self.set_voltage_flag = 1
         self.set_voltage_value = voltage
 
